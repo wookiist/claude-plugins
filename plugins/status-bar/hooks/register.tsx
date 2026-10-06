@@ -1,16 +1,33 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register, RenderElement } from 'claude-code'
+import type { EngineInterface, Register, RenderElement, SessionRateLimit } from 'claude-code'
 
 import type { Place } from '../types'
 import { EMPTY, format } from './format'
+import { current, mergeLimits, parseLimits } from './limits'
 
 const tally = atom({ plugin: 'status-bar', key: 'tally' } as const, EMPTY)
 const line = atom({ plugin: 'status-bar', key: 'line' } as const, null)
 const place = atom({ plugin: 'status-bar', key: 'place' } as const, null)
 
+const shareLimits = async ($: EngineInterface, local: readonly SessionRateLimit[]) => {
+  const shared = parseLimits(await $.store.get('limits'))
+  const merged = mergeLimits(shared, local)
+  if (JSON.stringify(merged) !== JSON.stringify(shared)) {
+    await $.store.set('limits', merged)
+  }
+  return merged
+}
+
 const refresh = async ($: EngineInterface) => {
-  const [model, usage, t, p] = await Promise.all([$.session.model(), $.session.usage(), read($, tally), read($, place)])
-  const next = format(model, usage, t, p)
+  const [model, usage, t, p, now] = await Promise.all([
+    $.session.model(),
+    $.session.usage(),
+    read($, tally),
+    read($, place),
+    $.clock.now(),
+  ])
+  const rateLimits = current(await shareLimits($, usage.rateLimits), now)
+  const next = format(model, { ...usage, rateLimits }, t, p)
   await update($, line, prev => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next))
 }
 
@@ -65,6 +82,7 @@ export const register: Register = on => {
     const started = await next(e)
     $.ui.status(undefined)
     await syncPlace($)
+    $.clock.every(5000, () => refresh($))
     return started
   })
 

@@ -1,5 +1,5 @@
 import type { RenderElement } from 'claude-code'
-import { expect, test } from 'claude-code/testing'
+import { expect, mock, test } from 'claude-code/testing'
 
 const PROPS = {
   hasSurvey: false,
@@ -15,6 +15,8 @@ const ENGINE = () => ({ type: 'engine' as const, ref: 0 })
 const USAGE = { startedAt: 0, context: { window: 100, tokens: 85, percent: 85 }, rateLimits: [] }
 
 test('draws the colored line, with a divider on the terminal alone', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: USAGE }))
   on('session.measure', (_, e) => ({ changed: e.changed }))
@@ -33,6 +35,8 @@ test('draws the colored line, with a divider on the terminal alone', async ($, o
 })
 
 test('redraws at once when /model or /effort changes them', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
   let model = 'claude-opus-5-5'
   let saved: Record<string, string> = { 'claude-opus-5-5': 'high', 'claude-fable-5-1': 'medium' }
   on('session.model', () => ({ value: model }))
@@ -82,6 +86,8 @@ const stacks = (el: RenderElement, a: RegExp, b: RegExp): boolean => {
 }
 
 test('puts the band another plugin drew beneath it on the line under its own', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: USAGE }))
   on('session.measure', (_, e) => ({ changed: e.changed }))
@@ -96,6 +102,8 @@ test('puts the band another plugin drew beneath it on the line under its own', a
 })
 
 test('ends the line with the directory and the branch git reports, the sha once detached', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
   const cwd = '/Users/me/claude-plugins'
   let branch = 'main'
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
@@ -126,10 +134,12 @@ test('ends the line with the directory and the branch git reports, the sha once 
 })
 
 test('drops the divider a band beneath it drew, keeping its own', async ($, on) => {
+  mock.clock(on)
+  mock.store(on)
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: USAGE }))
   on('session.measure', (_, e) => ({ changed: e.changed }))
-  on('ui.render', { component: 'AbovePrompt' }, () => ({
+  on('ui.render', { component: 'AbovePrompt' }, (): RenderElement => ({
     type: 'Box',
     props: { flexDirection: 'column' },
     children: [
@@ -144,5 +154,50 @@ test('drops the divider a band beneath it drew, keeping its own', async ($, on) 
   expect(texts.filter(t => /^─+$/.test(t))).toHaveLength(1)
   expect(texts.findIndex(t => /^─+$/.test(t))).toBeLessThan(texts.findIndex(t => t.startsWith('[Opus 5.5]')))
   expect(texts).toContain('● 집중 1회차 25:00')
+  await ui.unmount()
+})
+
+test('shows the freshest 5h and 7d any session saw, and shares its own', async ($, on) => {
+  const now = Date.parse('2026-10-07T01:00:00.000Z')
+  const clock = mock.clock(on, { now })
+  const store: Record<string, unknown> = {}
+  on('store.get', (_, e) => ({ value: store[e.key] }))
+  on('store.set', (_, e) => {
+    store[e.key] = e.value
+    return { value: undefined }
+  })
+  const H = '2026-10-07T05:00:00.000Z'
+  const D = '2026-10-10T00:00:00.000Z'
+  let local = [
+    { kind: 'five_hour', percentUsed: 12, resetsAt: H },
+    { kind: 'seven_day', percentUsed: 30, resetsAt: D },
+  ]
+  on('session.model', () => ({ value: 'claude-opus-5-5' }))
+  on('session.usage', () => ({ value: { ...USAGE, rateLimits: local } }))
+  on('session.measure', (_, e) => ({ changed: e.changed }))
+  on('session.start', (_, e) => e)
+  on('session.cwd', () => ({ value: '/' }))
+  on('process.run', () => ({ value: { exitCode: 128, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
+  on('ui.render', { component: 'AbovePrompt' }, ENGINE)
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+
+  const ui = await $.ui.mount({ plugin: 'status-bar', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
+  const limits = async () => (await ui.find({ type: 'Text', text: /^\[Opus/ }))?.text.match(/5h \S+ \/ 7d \S+/)?.[0]
+  expect(await limits()).toBe('5h 12% / 7d 30%')
+  expect(store.limits).toEqual(local)
+
+  store.limits = [
+    { kind: 'five_hour', percentUsed: 47, resetsAt: H },
+    { kind: 'seven_day', percentUsed: 33, resetsAt: D },
+  ]
+  await clock.advance(5000)
+  expect(await limits()).toBe('5h 47% / 7d 33%')
+
+  local = [{ kind: 'five_hour', percentUsed: 12, resetsAt: H }]
+  await $.session.measure({ context: USAGE.context, rateLimits: local, changed: ['rateLimits'] })
+  expect(await limits()).toBe('5h 47% / 7d 33%')
+
+  await clock.set(Date.parse(H))
+  expect(await limits()).toBe('5h 0% / 7d 33%')
   await ui.unmount()
 })
