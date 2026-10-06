@@ -1,13 +1,20 @@
-export type Phase = 'work' | 'break'
+export type Plan = {
+  startedAt: number
+  focusMin: number
+  breakMin: number
+  pausedAt: number | null
+  pausedMs: number
+  skippedMs: number
+}
 
-export type Timer =
-  | { phase: Phase; status: 'running'; endsAt: number }
-  | { phase: Phase; status: 'paused'; leftMs: number }
+export type Kind = 'focus' | 'break'
 
-export type View = { phase: Phase; status: Timer['status']; secondsLeft: number; totalSeconds: number }
+export type Status = { kind: Kind; round: number; seq: number; leftMs: number; isPaused: boolean }
+
+export type Seen = { startedAt: number; seq: number }
 
 declare module 'claude-code' {
   interface PluginState {
-    pomodoro: { view: View | null }
+    pomodoro: { view: Status | null; seen: Seen | null }
   }
 }

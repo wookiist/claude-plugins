@@ -124,3 +124,25 @@ test('ends the line with the directory and the branch git reports, the sha once 
     await ui.unmount()
   }
 })
+
+test('drops the divider a band beneath it drew, keeping its own', async ($, on) => {
+  on('session.model', () => ({ value: 'claude-opus-5-5' }))
+  on('session.usage', () => ({ value: USAGE }))
+  on('session.measure', (_, e) => ({ changed: e.changed }))
+  on('ui.render', { component: 'AbovePrompt' }, () => ({
+    type: 'Box',
+    props: { flexDirection: 'column' },
+    children: [
+      { type: 'Text', props: { dimColor: true }, children: ['─'.repeat(40)] },
+      { type: 'Text', props: {}, children: ['● 집중 1회차 25:00'] },
+    ],
+  }))
+  await $.session.measure({ context: USAGE.context, rateLimits: [], changed: ['context'] })
+
+  const ui = await $.ui.mount({ plugin: 'status-bar', surface: 'terminal', component: 'AbovePrompt', props: PROPS })
+  const texts = (await ui.findAll({ type: 'Text' })).map(t => t.text)
+  expect(texts.filter(t => /^─+$/.test(t))).toHaveLength(1)
+  expect(texts.findIndex(t => /^─+$/.test(t))).toBeLessThan(texts.findIndex(t => t.startsWith('[Opus 5.5]')))
+  expect(texts).toContain('● 집중 1회차 25:00')
+  await ui.unmount()
+})

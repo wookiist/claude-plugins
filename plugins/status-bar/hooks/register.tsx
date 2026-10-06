@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, RenderElement } from 'claude-code'
 
 import type { Place } from '../types'
 import { EMPTY, format } from './format'
@@ -32,6 +32,17 @@ const syncPlace = async ($: EngineInterface) => {
   await update($, place, prev => (prev?.dir === next.dir && prev.head === next.head ? prev : next))
   await refresh($)
 }
+
+const isDivider = (node: unknown) =>
+  typeof node === 'object' &&
+  node !== null &&
+  (node as RenderElement).type === 'Text' &&
+  ((node as { children?: unknown[] }).children ?? []).every(c => typeof c === 'string' && /^─+$/.test(c))
+
+const withoutDivider = (el: RenderElement): RenderElement =>
+  el.type === 'Box' && el.props?.flexDirection === 'column' && isDivider(el.children?.[0])
+    ? { ...el, children: el.children?.slice(1) }
+    : el
 
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
 
@@ -132,7 +143,7 @@ export const register: Register = on => {
         ))}
       </Text>
     )
-    const rest = below.type === 'engine' ? null : below
+    const rest = below.type === 'engine' ? null : withoutDivider(below)
     if (e.surface !== 'terminal' && rest === null) {
       return status
     }

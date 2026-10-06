@@ -1,117 +1,119 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Timer } from '../types'
-import { advance, bar, clock, LABEL, notice, pause, resume, start, view } from './timer'
-import type { Durations } from './timer'
+import type { Plan } from '../types'
+import { apply, clock, describe, LABEL, parseCommand, parsePlan, parseToolInput, status, toastFor } from './schedule'
+import type { Action } from './schedule'
 
-const shown = atom({ plugin: 'pomodoro', key: 'view' } as const, null)
+const view = atom({ plugin: 'pomodoro', key: 'view' } as const, null)
+const seen = atom({ plugin: 'pomodoro', key: 'seen' } as const, null)
 
-const USAGE = '사용법: /pomodoro [start|break|pause|resume|stop]'
+const TOOL = 'mcp__pomodoro__pomodoro'
 
-const load = async ($: EngineInterface) => ((await $.store.get('timer')) ?? null) as Timer | null
-
-const tick = async ($: EngineInterface, ms: Durations) => {
-  const [stored, now] = await Promise.all([load($), $.clock.now()])
-  const { timer, ended } = advance(stored, now, ms)
-  if (ended.length > 0) {
-    await $.store.set('timer', timer)
-    const text = notice(ended, timer, ms)
-    if (text !== undefined) {
-      $.ui.toast(text)
-    }
-  }
-  const next = view(timer, now, ms)
-  await update($, shown, prev => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next))
+const DONE: Record<Action['kind'], string> = {
+  start: '시작했어요.',
+  stop: '멈췄어요.',
+  pause: '일시정지했어요.',
+  resume: '재개했어요.',
+  skip: '다음 단계로 넘어갔어요.',
 }
 
-const act = async ($: EngineInterface, word: string, ms: Durations) => {
-  await tick($, ms)
-  const [t, now] = await Promise.all([load($), $.clock.now()])
-  const next =
-    word === '' || word === 'start'
-      ? start('work', now, ms)
-      : word === 'break'
-        ? start('break', now, ms)
-        : word === 'pause'
-          ? pause(t, now)
-          : word === 'resume'
-            ? resume(t, now)
-            : word === 'stop'
-              ? null
-              : undefined
-  if (next === undefined) {
-    return USAGE
+const loadPlan = async ($: EngineInterface) => parsePlan(await $.store.get('plan'))
+
+const savePlan = async ($: EngineInterface, p: Plan | null) => (p === null ? $.store.delete('plan') : $.store.set('plan', p))
+
+const tick = async ($: EngineInterface) => {
+  const [p, now, prev] = await Promise.all([loadPlan($), $.clock.now(), read($, seen)])
+  const s = p === null ? null : status(p, now)
+  const text = p !== null && s !== null ? toastFor(prev, p, s) : undefined
+  if (text !== undefined) {
+    $.ui.toast(text)
   }
-  if (t === null && (word === 'pause' || word === 'resume')) {
-    return '진행 중인 타이머가 없어요.'
-  }
-  await $.store.set('timer', next)
-  await tick($, ms)
-  if (next === null) {
-    return '타이머를 멈췄어요.'
-  }
-  const v = view(next, now, ms)
-  return v === null ? USAGE : `${LABEL[v.phase]} ${clock(v.secondsLeft)} ${next.status === 'paused' ? '일시정지했어요.' : '진행 중이에요.'}`
+  const nextSeen = p !== null && s !== null ? { startedAt: p.startedAt, seq: s.seq } : null
+  await update($, seen, old => (JSON.stringify(old) === JSON.stringify(nextSeen) ? old : nextSeen))
+  await update($, view, old => (JSON.stringify(old) === JSON.stringify(s) ? old : s))
+  return s
 }
 
-export const register: Register = (on, options) => {
-  const ms = { work: Number(options.workMinutes ?? 25) * 60000, break: Number(options.breakMinutes ?? 5) * 60000 }
+const act = async ($: EngineInterface, a: Action) => {
+  await tick($)
+  const [p, now] = await Promise.all([loadPlan($), $.clock.now()])
+  if (p === null && a.kind !== 'start' && a.kind !== 'stop') {
+    return `진행 중인 타이머가 없어요. 현재 ${describe(null)}`
+  }
+  await savePlan($, apply(p, a, now))
+  return `${DONE[a.kind]} 현재 ${describe(await tick($))}`
+}
 
+export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
     await $.command.register({
       name: 'pomodoro',
-      description: '뽀모도로 타이머를 시작, 일시정지, 재개하거나 멈춰요',
-      argumentHint: '[start|break|pause|resume|stop]',
+      description: '뽀모도로 타이머를 시작하거나 멈춰요',
+      argumentHint: '[집중분] [휴식분] | stop',
       immediate: true,
     })
-    await tick($, ms)
-    $.clock.every(1000, () => tick($, ms))
+    await $.tool.register({
+      name: 'pomodoro',
+      description:
+        '뽀모도로 타이머를 조작해요. action은 start, stop, pause, resume 중 하나예요. start일 때만 focusMin(집중 분)과 breakMin(휴식 분)을 받고, 빠지면 25분과 5분을 써요.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['start', 'stop', 'pause', 'resume'] },
+          focusMin: { type: 'number', description: '집중 분, start일 때만' },
+          breakMin: { type: 'number', description: '휴식 분, start일 때만' },
+        },
+        required: ['action'],
+      },
+    })
+    await tick($)
+    $.clock.every(1000, () => tick($))
     return started
   })
 
-  on('command.run', { command: 'pomodoro' }, async ($, e) => ({ text: await act($, e.args.trim(), ms) }))
+  on('command.run', { command: 'pomodoro' }, async ($, e) => ({ text: await act($, parseCommand(e.args)) }))
+
+  on('tool.call', { tool: TOOL }, async ($, e) => {
+    const a = parseToolInput(e as Record<string, unknown>)
+    const text = a === null ? `action은 start, stop, pause, resume 중 하나여야 해요. 현재 ${describe(await tick($))}` : await act($, a)
+    return { result: { content: [{ type: 'text', text }], isError: a === null } }
+  })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    const [below, v] = await Promise.all([next(e), read($, shown)])
-    if (e.props.hasSurvey) {
+    const [below, s] = await Promise.all([next(e), read($, view)])
+    if (e.props.hasSurvey || s === null) {
       return below
     }
     const { Box, Button, Text } = $.ui.resolve(e)
-    const isPaused = v?.status === 'paused'
-    const widget =
-      v === null ? (
-        <Box flexShrink={0}>
-          <Button key="start" label="▶ 뽀모도로" hotkey="s" plain dimColor onPress={() => act($, 'start', ms)} />
-        </Box>
-      ) : (
-        <Box flexShrink={0} columnGap={2}>
-          <Text>
-            <Text color={v.phase === 'work' ? 'error' : 'success'} bold>
-              {LABEL[v.phase]}
-            </Text>
-            <Text dimColor> {bar(v)} </Text>
-            <Text color={isPaused ? 'warning' : 'text'}>{clock(v.secondsLeft)}</Text>
-          </Text>
-          <Button
-            key="toggle"
-            label={isPaused ? '재개' : '일시정지'}
-            hotkey="p"
-            plain
-            dimColor
-            onPress={() => act($, isPaused ? 'resume' : 'pause', ms)}
-          />
-          <Button key="stop" label="중지" hotkey="x" plain dimColor onPress={() => act($, 'stop', ms)} />
+    const line = (
+      <Box columnGap={1}>
+        <Text>
+          <Text color={s.kind === 'focus' ? 'error' : 'success'}>●</Text>{' '}
+          <Text bold>{LABEL[s.kind]}</Text> {s.round}회차 <Text dimColor={s.isPaused}>{clock(s.leftMs)}</Text>
+          {s.isPaused ? ' 일시정지' : ''}
+        </Text>
+        <Button key="toggle" label={s.isPaused ? '재개' : '일시정지'} plain onPress={() => act($, { kind: s.isPaused ? 'resume' : 'pause' })} />
+        <Button key="skip" label="건너뛰기" plain onPress={() => act($, { kind: 'skip' })} />
+        <Button key="stop" label="중지" plain onPress={() => act($, { kind: 'stop' })} />
+      </Box>
+    )
+    if (below.type !== 'engine') {
+      return (
+        <Box flexDirection="column">
+          {below}
+          {line}
         </Box>
       )
-    if (below.type === 'engine') {
-      return widget
+    }
+    if (e.surface !== 'terminal') {
+      return line
     }
     return (
       <Box flexDirection="column">
-        {below}
-        {widget}
+        <Text dimColor>{'─'.repeat(e.props.bodyColumns)}</Text>
+        {line}
       </Box>
     )
   })

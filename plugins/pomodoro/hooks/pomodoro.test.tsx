@@ -6,130 +6,182 @@ const PROPS = {
   hasSurvey: false,
   isWorking: false,
   maxRows: 10,
-  bodyColumns: 100,
+  bodyColumns: 30,
   scroll: { offset: 0, bodyRows: 10 },
   view: {},
 }
 
 const MIN = 60000
+const T0 = 1_000_000
+const TOOL = 'mcp__pomodoro__pomodoro'
 
 type Engine = Parameters<TestBody>[0]
 
-const begin = async ($: Engine, on: On, below: () => RenderElement = () => ({ type: 'engine', ref: 0 })) => {
+const engineBand = (): RenderElement => ({ type: 'engine', ref: 0 })
+
+const boot = async ($: Engine, on: On, below: () => RenderElement = engineBand) => {
+  const clock = mock.clock(on, { now: T0 })
+  const store: Record<string, unknown> = {}
+  const toasts: string[] = []
+  on('store.get', (_, e) => ({ value: store[e.key] }))
+  on('store.set', (_, e) => {
+    store[e.key] = e.value
+    return { value: undefined }
+  })
+  on('store.delete', (_, e) => {
+    delete store[e.key]
+    return { value: undefined }
+  })
+  on('ui.toast', (_, e) => {
+    toasts.push(e.text)
+    return { value: undefined }
+  })
   on('session.start', (_, e) => e)
   on('command.register', (_, e) => ({ value: { command: e.name } }))
+  on('tool.register', (_, e) => ({ value: { tool: `mcp__pomodoro__${e.name}` } }))
   on('ui.render', { component: 'AbovePrompt' }, below)
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  return { clock, store, toasts }
 }
 
 const run = async ($: Engine, args: string) =>
   (await $.command.run({ command: 'pomodoro', args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } }))
     .text
 
-const timerText = /^(집중|휴식)/
+const timer = /^● /
 
-test('counts down 25 minutes of focus, then a 5-minute break, toasting each end', async ($, on) => {
-  const clock = mock.clock(on, { now: 1_000_000 })
-  mock.store(on)
-  const toasts: string[] = []
-  on('ui.toast', (_, e) => {
-    toasts.push(e.text)
-    return { value: undefined }
-  })
-  await begin($, on)
+test('the command starts with defaults or given minutes, and stop or 중지 ends it', async ($, on) => {
+  const { store } = await boot($, on)
 
-  expect(await run($, '')).toBe('집중 25:00 진행 중이에요.')
-  const ui = await $.ui.mount({ plugin: 'pomodoro', surface: 'terminal', component: 'AbovePrompt', props: PROPS })
-  expect((await ui.find({ type: 'Text', text: timerText }))?.text).toBe('집중 ▱▱▱▱▱▱▱▱ 25:00')
-
-  await clock.advance(13 * MIN)
-  expect((await ui.find({ type: 'Text', text: timerText }))?.text).toBe('집중 ▰▰▰▰▱▱▱▱ 12:00')
-
-  await clock.advance(12 * MIN + 1000)
-  expect((await ui.find({ type: 'Text', text: timerText }))?.text).toBe('휴식 ▱▱▱▱▱▱▱▱ 04:59')
-  expect(toasts).toEqual(['집중 끝. 5분 쉬어요.'])
-
-  await clock.advance(5 * MIN)
-  expect(await ui.find({ type: 'Text', text: timerText })).toBeUndefined()
-  expect(await ui.find({ key: 'start' })).toBeDefined()
-  expect(toasts).toEqual(['집중 끝. 5분 쉬어요.', '휴식 끝. 다시 시작할 땐 /pomodoro.'])
-  await ui.unmount()
+  expect(await run($, '')).toBe('시작했어요. 현재 집중 1회차 25:00 남음')
+  expect(store.plan).toEqual({ startedAt: T0, focusMin: 25, breakMin: 5, pausedAt: null, pausedMs: 0, skippedMs: 0 })
+  expect(await run($, '50 10')).toBe('시작했어요. 현재 집중 1회차 50:00 남음')
+  expect(await run($, 'abc 0')).toBe('시작했어요. 현재 집중 1회차 25:00 남음')
+  expect(await run($, 'stop')).toBe('멈췄어요. 현재 타이머 꺼짐')
+  expect(store.plan).toBeUndefined()
+  await run($, '')
+  expect(await run($, '중지')).toBe('멈췄어요. 현재 타이머 꺼짐')
 })
 
-test('the band buttons start, pause, resume and stop the timer on every surface', async ($, on) => {
-  const clock = mock.clock(on)
-  mock.store(on)
-  await begin($, on)
-
+test('draws nothing while stopped or while a survey holds the band', async ($, on) => {
+  await boot($, on)
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ plugin: 'pomodoro', surface, component: 'AbovePrompt', props: PROPS })
-    await ui.press({ key: 'start' })
-    expect((await ui.find({ key: 'toggle' }))?.text).toBe('일시정지')
+    expect(await ui.drawn()).toEqual(engineBand())
+    await ui.unmount()
+  }
+  await run($, '')
+  const survey = await $.ui.mount({ plugin: 'pomodoro', surface: 'terminal', component: 'AbovePrompt', props: { ...PROPS, hasSurvey: true } })
+  expect(await survey.drawn()).toEqual(engineBand())
+  await survey.unmount()
+})
 
-    await clock.advance(5 * MIN)
+test('the buttons pause, resume, skip and stop on every surface, dimming a paused clock', async ($, on) => {
+  const { clock } = await boot($, on)
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    await run($, '')
+    const ui = await $.ui.mount({ plugin: 'pomodoro', surface, component: 'AbovePrompt', props: PROPS })
+    expect((await ui.find({ type: 'Text', text: timer }))?.text).toBe('● 집중 1회차 25:00')
+    expect((await ui.find({ type: 'Text', text: timer }))?.children).toContainEqual({ type: 'Text', props: { color: 'error' }, children: ['●'] })
+    expect((await ui.findAll({ type: 'Button' })).map(b => b.text)).toEqual(['일시정지', '건너뛰기', '중지'])
+
+    await clock.advance(MIN)
     await ui.press({ key: 'toggle' })
+    await clock.advance(10 * MIN)
+    expect((await ui.find({ type: 'Text', text: timer }))?.text).toBe('● 집중 1회차 24:00 일시정지')
+    expect((await ui.find({ type: 'Text', text: timer }))?.children).toContainEqual({ type: 'Text', props: { dimColor: true }, children: ['24:00'] })
     expect((await ui.find({ key: 'toggle' }))?.text).toBe('재개')
-    await clock.advance(30 * MIN)
-    expect((await ui.find({ type: 'Text', text: timerText }))?.text).toBe('집중 ▰▰▱▱▱▱▱▱ 20:00')
 
     await ui.press({ key: 'toggle' })
     await clock.advance(MIN)
-    expect((await ui.find({ type: 'Text', text: timerText }))?.text).toBe('집중 ▰▰▱▱▱▱▱▱ 19:00')
+    expect((await ui.find({ type: 'Text', text: timer }))?.text).toBe('● 집중 1회차 23:00')
+
+    await ui.press({ key: 'skip' })
+    expect((await ui.find({ type: 'Text', text: timer }))?.text).toBe('● 휴식 1회차 05:00')
+    expect((await ui.find({ type: 'Text', text: timer }))?.children).toContainEqual({ type: 'Text', props: { color: 'success' }, children: ['●'] })
 
     await ui.press({ key: 'stop' })
-    expect(await ui.find({ type: 'Text', text: timerText })).toBeUndefined()
-    expect(await ui.find({ key: 'start' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: timer })).toBeUndefined()
     await ui.unmount()
   }
 })
 
-test('pause and resume by command, and a stored timer resumes on session start', async ($, on) => {
-  mock.clock(on, { now: 10 * MIN })
-  mock.store(on, { timer: { phase: 'work', status: 'running', endsAt: 20 * MIN } })
-  await begin($, on)
+test('toasts when a phase ends or is skipped, never on start, pause or stop', async ($, on) => {
+  const { clock, toasts } = await boot($, on)
+  await run($, '1 1')
+  const ui = await $.ui.mount({ plugin: 'pomodoro', surface: 'terminal', component: 'AbovePrompt', props: PROPS })
+  await ui.press({ key: 'toggle' })
+  await ui.press({ key: 'toggle' })
+  expect(toasts).toEqual([])
 
-  expect(await run($, 'pause')).toBe('집중 10:00 일시정지했어요.')
-  expect(await run($, 'resume')).toBe('집중 10:00 진행 중이에요.')
-  expect(await run($, 'stop')).toBe('타이머를 멈췄어요.')
-  expect(await run($, 'pause')).toBe('진행 중인 타이머가 없어요.')
-  expect(await run($, 'later')).toBe('사용법: /pomodoro [start|break|pause|resume|stop]')
+  await clock.advance(MIN)
+  expect(toasts).toEqual(['집중 1회 완료. 쉬어요.'])
+  await ui.press({ key: 'skip' })
+  expect(toasts).toEqual(['집중 1회 완료. 쉬어요.', '휴식 끝. 다시 집중할 시간이에요.'])
+
+  await run($, '')
+  await ui.press({ key: 'stop' })
+  expect(toasts).toHaveLength(2)
+  await ui.unmount()
 })
 
-const kidsOf = (node: unknown): unknown[] =>
-  typeof node === 'object' && node !== null && 'children' in node && Array.isArray(node.children) ? node.children : []
+test('picks up a plan another session wrote within a second', async ($, on) => {
+  const { clock, store, toasts } = await boot($, on)
+  const ui = await $.ui.mount({ plugin: 'pomodoro', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
 
-const textOf = (node: unknown): string => (typeof node === 'string' ? node : kidsOf(node).map(textOf).join(''))
+  store.plan = { startedAt: T0 - 20 * MIN, focusMin: 25, breakMin: 5, pausedAt: null, pausedMs: 0, skippedMs: 0 }
+  await clock.advance(1000)
+  expect((await ui.find({ type: 'Text', text: timer }))?.text).toBe('● 집중 1회차 04:59')
 
-const textsIn = (node: unknown): string[] => [textOf(node), ...kidsOf(node).flatMap(textsIn)]
+  store.plan = { ...(store.plan as object), pausedAt: T0 + 1000 }
+  await clock.advance(1000)
+  expect((await ui.find({ type: 'Text', text: timer }))?.text).toBe('● 집중 1회차 04:59 일시정지')
 
-const stacks = (el: RenderElement, a: RegExp, b: RegExp): boolean => {
-  if (el.type !== 'Box') {
-    return false
-  }
-  const kids = kidsOf(el)
-  const at = (re: RegExp) => kids.findIndex(k => textsIn(k).some(t => re.test(t)))
-  const [i, j] = [at(a), at(b)]
-  const isColumn = el.props?.flexDirection === 'column'
-  return (isColumn && i >= 0 && j > i) || kids.some(k => stacks(k as RenderElement, a, b))
-}
+  store.plan = { ...(store.plan as object), skippedMs: 5 * MIN - 1000 }
+  await clock.advance(1000)
+  expect((await ui.find({ type: 'Text', text: timer }))?.text).toBe('● 휴식 1회차 05:00 일시정지')
+  expect(toasts).toEqual(['집중 1회 완료. 쉬어요.'])
 
-test('sits on its own line under the band another plugin drew beneath it', async ($, on) => {
-  mock.clock(on)
-  mock.store(on)
-  await begin($, on, () => ({ type: 'Text', props: {}, children: ['status line'] }))
-  await run($, 'break')
-
-  for (const surface of ['terminal', 'desktop'] as const) {
-    const ui = await $.ui.mount({ plugin: 'pomodoro', surface, component: 'AbovePrompt', props: PROPS })
-    expect(stacks(await ui.drawn(), /^status line$/, /^휴식 ▱+ 05:00$/)).toBe(true)
-    await ui.unmount()
-  }
+  delete store.plan
+  await clock.advance(1000)
+  expect(await ui.find({ type: 'Text', text: timer })).toBeUndefined()
+  await ui.unmount()
 })
 
-test('takes the durations from its options', { options: { workMinutes: 50, breakMinutes: 10 } }, async ($, on) => {
-  mock.clock(on)
-  mock.store(on)
-  await begin($, on)
-  expect(await run($, 'start')).toBe('집중 50:00 진행 중이에요.')
-  expect(await run($, 'break')).toBe('휴식 10:00 진행 중이에요.')
+test('draws a dim divider on the terminal alone, and none under another plugin band', async ($, on) => {
+  await boot($, on)
+  await run($, '')
+  const term = await $.ui.mount({ plugin: 'pomodoro', surface: 'terminal', component: 'AbovePrompt', props: PROPS })
+  expect(await term.find({ type: 'Text', text: '─'.repeat(30) })).toMatchObject({ props: { dimColor: true } })
+  await term.unmount()
+  const desk = await $.ui.mount({ plugin: 'pomodoro', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
+  expect(await desk.find({ type: 'Text', text: /^─+$/ })).toBeUndefined()
+  await desk.unmount()
+})
+
+test('keeps another plugin band above the timer, without a divider', async ($, on) => {
+  await boot($, on, () => ({ type: 'Text', props: {}, children: ['status line'] }))
+  await run($, '')
+  const ui = await $.ui.mount({ plugin: 'pomodoro', surface: 'terminal', component: 'AbovePrompt', props: PROPS })
+  const texts = (await ui.findAll({ type: 'Text' })).map(t => t.text)
+  expect(texts.indexOf('status line')).toBeGreaterThanOrEqual(0)
+  expect(texts.indexOf('status line')).toBeLessThan(texts.findIndex(t => timer.test(t)))
+  expect(texts.some(t => /^─+$/.test(t))).toBe(false)
+  await ui.unmount()
+})
+
+test('the model tool starts, pauses, resumes and stops, ending with the current state', async ($, on) => {
+  await boot($, on)
+  const call = async (input: Record<string, unknown>) => {
+    const r = await $.tool.call({ tool: TOOL, ...input })
+    const content = (r.result as { content: { text: string }[] }).content
+    return content.map(c => c.text).join('')
+  }
+  expect(await call({ action: 'start', focusMin: 40, breakMin: 8 })).toBe('시작했어요. 현재 집중 1회차 40:00 남음')
+  expect(await call({ action: 'pause' })).toBe('일시정지했어요. 현재 집중 1회차 40:00 남음 (일시정지)')
+  expect(await call({ action: 'resume' })).toBe('재개했어요. 현재 집중 1회차 40:00 남음')
+  expect(await call({ action: 'stop' })).toBe('멈췄어요. 현재 타이머 꺼짐')
+  expect(await call({ action: 'pause' })).toBe('진행 중인 타이머가 없어요. 현재 타이머 꺼짐')
+  expect(await call({ action: 'jump' })).toBe('action은 start, stop, pause, resume 중 하나여야 해요. 현재 타이머 꺼짐')
 })
