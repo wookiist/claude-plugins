@@ -106,13 +106,11 @@ export const register: Register = (on, options) => {
         </Box>
       )
     if (below.type === 'engine') {
-      return <Box justifyContent="flex-end">{widget}</Box>
+      return widget
     }
     return (
-      <Box alignItems="flex-end" columnGap={2}>
-        <Box flexGrow={1} flexShrink={1}>
-          {below}
-        </Box>
+      <Box flexDirection="column">
+        {below}
         {widget}
       </Box>
     )

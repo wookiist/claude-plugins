@@ -70,18 +70,18 @@ const textOf = (node: unknown): string => (typeof node === 'string' ? node : kid
 
 const textsIn = (node: unknown): string[] => [textOf(node), ...kidsOf(node).flatMap(textsIn)]
 
-const rowHolding = (el: RenderElement, a: RegExp, b: RegExp): boolean => {
+const stacks = (el: RenderElement, a: RegExp, b: RegExp): boolean => {
   if (el.type !== 'Box') {
     return false
   }
   const kids = kidsOf(el)
   const at = (re: RegExp) => kids.findIndex(k => textsIn(k).some(t => re.test(t)))
   const [i, j] = [at(a), at(b)]
-  const isRow = (el.props?.flexDirection ?? 'row') === 'row'
-  return (isRow && i >= 0 && j > i) || kids.some(k => rowHolding(k as RenderElement, a, b))
+  const isColumn = el.props?.flexDirection === 'column'
+  return (isColumn && i >= 0 && j > i) || kids.some(k => stacks(k as RenderElement, a, b))
 }
 
-test('puts the band another plugin drew beneath it at the right end of its row', async ($, on) => {
+test('puts the band another plugin drew beneath it on the line under its own', async ($, on) => {
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: USAGE }))
   on('session.measure', (_, e) => ({ changed: e.changed }))
@@ -90,7 +90,7 @@ test('puts the band another plugin drew beneath it at the right end of its row',
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ plugin: 'status-bar', surface, component: 'AbovePrompt', props: PROPS })
-    expect(rowHolding(await ui.drawn(), /^\[Opus 5\.5\]/, /^집중 25:00$/)).toBe(true)
+    expect(stacks(await ui.drawn(), /^\[Opus 5\.5\]/, /^집중 25:00$/)).toBe(true)
     await ui.unmount()
   }
 })

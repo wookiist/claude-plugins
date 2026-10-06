@@ -1,7 +1,7 @@
 {
   "name": "pomodoro",
-  "version": "0.2.0",
-  "description": "Pomodoro timer at the right end of the band above the prompt, with start, pause, resume and stop buttons",
+  "version": "0.2.1",
+  "description": "Pomodoro timer on its own line above the prompt, with start, pause, resume and stop buttons",
   "author": { "name": "wookiist" },
   "types": "./types/index.d.ts",
   "userConfig": {
