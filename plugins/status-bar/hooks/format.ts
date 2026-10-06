@@ -1,6 +1,6 @@
 import type { SessionUsage } from 'claude-code'
 
-import type { Segment, Tally } from '../types'
+import type { Place, Segment, Tally } from '../types'
 
 export const EMPTY: Tally = { turns: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
 
@@ -37,6 +37,7 @@ export const format = (
   model: string,
   usage: Pick<SessionUsage, 'context' | 'rateLimits'>,
   t: Tally,
+  place: Place | null,
 ): Segment[] => {
   const limit = (kind: string) => usage.rateLimits.find(r => r.kind === kind)?.percentUsed
   const read = t.input + t.cacheRead + t.cacheWrite
@@ -64,5 +65,7 @@ export const format = (
     SEP,
     label('cache '),
     hit(read === 0 ? undefined : (t.cacheRead / read) * 100),
+    ...(place ? [SEP, label(place.dir)] : []),
+    ...(place?.head ? [punct(' ('), { text: place.head, color: 'success' } as const, punct(')')] : []),
   ]
 }

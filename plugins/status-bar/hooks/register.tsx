@@ -1,15 +1,36 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
+import type { Place } from '../types'
 import { EMPTY, format } from './format'
 
 const tally = atom({ plugin: 'status-bar', key: 'tally' } as const, EMPTY)
 const line = atom({ plugin: 'status-bar', key: 'line' } as const, null)
+const place = atom({ plugin: 'status-bar', key: 'place' } as const, null)
 
 const refresh = async ($: EngineInterface) => {
-  const [model, usage, t] = await Promise.all([$.session.model(), $.session.usage(), read($, tally)])
-  const next = format(model, usage, t)
+  const [model, usage, t, p] = await Promise.all([$.session.model(), $.session.usage(), read($, tally), read($, place)])
+  const next = format(model, usage, t, p)
   await update($, line, prev => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next))
+}
+
+const git = async ($: EngineInterface, cwd: string, args: string[]) => {
+  const ran = await $.process.run(['git', ...args], { cwd }).catch(() => null)
+  return ran?.exitCode === 0 ? ran.stdout.trim() : null
+}
+
+const readPlace = async ($: EngineInterface): Promise<Place> => {
+  const cwd = await $.session.cwd()
+  const dir = cwd.split('/').filter(Boolean).pop() ?? cwd
+  const branch = await git($, cwd, ['branch', '--show-current'])
+  const head = branch === '' ? await git($, cwd, ['rev-parse', '--short', 'HEAD']) : branch
+  return { dir, head }
+}
+
+const syncPlace = async ($: EngineInterface) => {
+  const next = await readPlace($)
+  await update($, place, prev => (prev?.dir === next.dir && prev.head === next.head ? prev : next))
+  await refresh($)
 }
 
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
@@ -32,7 +53,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
     $.ui.status(undefined)
-    await refresh($)
+    await syncPlace($)
     return started
   })
 
@@ -85,9 +106,15 @@ export const register: Register = on => {
         cacheRead: t.cacheRead + (u?.cache_read_input_tokens ?? 0),
         cacheWrite: t.cacheWrite + (u?.cache_creation_input_tokens ?? 0),
       }))
-      await refresh($)
+      await syncPlace($)
     }
     return done
+  })
+
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    const ran = await next(e)
+    await syncPlace($).catch(() => undefined)
+    return ran
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {

@@ -11,8 +11,10 @@ export type SegmentColor = 'text' | 'subtle' | 'claude' | 'suggestion' | 'succes
 
 export type Segment = { text: string; color: SegmentColor; bold?: boolean }
 
+export type Place = { dir: string; head: string | null }
+
 declare module 'claude-code' {
   interface PluginState {
-    'status-bar': { tally: Tally; line: Segment[] | null }
+    'status-bar': { tally: Tally; line: Segment[] | null; place: Place | null }
   }
 }

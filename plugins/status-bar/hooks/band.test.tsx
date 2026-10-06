@@ -94,3 +94,33 @@ test('puts the band another plugin drew beneath it on the line under its own', a
     await ui.unmount()
   }
 })
+
+test('ends the line with the directory and the branch git reports, the sha once detached', async ($, on) => {
+  const cwd = '/Users/me/claude-plugins'
+  let branch = 'main'
+  on('session.model', () => ({ value: 'claude-opus-5-5' }))
+  on('session.usage', () => ({ value: USAGE }))
+  on('session.cwd', () => ({ value: cwd }))
+  on('session.measure', (_, e) => ({ changed: e.changed }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('process.run', (_, e) => {
+    const stdout = e.argv.includes('--show-current') ? `${branch}\n` : '2a265d1\n'
+    return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  on('tool.call', { tool: 'Bash' }, () => ({ result: { stdout: '', stderr: '', interrupted: false } }))
+  on('ui.render', { component: 'AbovePrompt' }, ENGINE)
+  await $.session.measure({ context: USAGE.context, rateLimits: [], changed: ['context'] })
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    branch = 'main'
+    await $.session.start({ cwd, surface, isInteractive: true })
+    const ui = await $.ui.mount({ plugin: 'status-bar', surface, component: 'AbovePrompt', props: PROPS })
+    const status = async () => (await ui.findAll({ type: 'Text' })).find(t => t.text.startsWith('[Opus 5.5]'))?.text
+    expect(await status()).toBe('[Opus 5.5] ctx 85% / 5h - / 7d - / turn 0 / 0/0 / cache - / claude-plugins (main)')
+
+    branch = ''
+    await $.tool.call({ tool: 'Bash', command: 'git switch --detach' })
+    expect(await status()).toBe('[Opus 5.5] ctx 85% / 5h - / 7d - / turn 0 / 0/0 / cache - / claude-plugins (2a265d1)')
+    await ui.unmount()
+  }
+})
