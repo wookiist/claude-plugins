@@ -1,0 +1,16 @@
+{
+  "name": "wookiist",
+  "owner": {
+    "name": "wookiist"
+  },
+  "metadata": {
+    "description": "wookiist가 만든 Claude Code 플러그인 모음"
+  },
+  "plugins": [
+    {
+      "name": "status-bar",
+      "source": "./plugins/status-bar",
+      "description": "입력창 위에 모델, effort, 컨텍스트와 사용량 한도, 턴 수, 캐시 토큰과 적중률을 색으로 보여줘요."
+    }
+  ]
+}
