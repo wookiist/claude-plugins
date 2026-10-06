@@ -91,9 +91,9 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    const segments = await read($, line)
+    const [below, segments] = await Promise.all([next(e), read($, line)])
     if (e.props.hasSurvey || segments === null) {
-      return next(e)
+      return below
     }
     const { Box, Text } = $.ui.resolve(e)
     const status = (
@@ -105,13 +105,15 @@ export const register: Register = on => {
         ))}
       </Text>
     )
-    if (e.surface !== 'terminal') {
+    const rest = below.type === 'engine' ? null : below
+    if (e.surface !== 'terminal' && rest === null) {
       return status
     }
     return (
       <Box flexDirection="column">
-        <Text dimColor>{'─'.repeat(e.props.bodyColumns)}</Text>
+        {e.surface === 'terminal' && <Text dimColor>{'─'.repeat(e.props.bodyColumns)}</Text>}
         {status}
+        {rest}
       </Box>
     )
   })

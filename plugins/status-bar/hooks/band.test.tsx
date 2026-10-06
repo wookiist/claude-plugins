@@ -9,12 +9,15 @@ const PROPS = {
   view: {},
 }
 
+const ENGINE = () => ({ type: 'engine' as const, ref: 0 })
+
 const USAGE = { startedAt: 0, context: { window: 100, tokens: 85, percent: 85 }, rateLimits: [] }
 
 test('draws the colored line, with a divider on the terminal alone', async ($, on) => {
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: USAGE }))
   on('session.measure', (_, e) => ({ changed: e.changed }))
+  on('ui.render', { component: 'AbovePrompt' }, ENGINE)
   await $.session.measure({ context: USAGE.context, rateLimits: [], changed: ['context'] })
 
   for (const surface of ['terminal', 'desktop'] as const) {
@@ -38,6 +41,7 @@ test('redraws at once when /model or /effort changes them', async ($, on) => {
   }))
   on('session.measure', (_, e) => ({ changed: e.changed }))
   on('command.run', () => ({ text: '' }))
+  on('ui.render', { component: 'AbovePrompt' }, ENGINE)
   await $.session.measure({ context: USAGE.context, rateLimits: [], changed: ['context'] })
 
   const ui = await $.ui.mount({ plugin: 'status-bar', surface: 'terminal', component: 'AbovePrompt', props: PROPS })
@@ -56,4 +60,20 @@ test('redraws at once when /model or /effort changes them', async ($, on) => {
   await typed('model', 'fable')
   expect(await head()).toBe('[Fable 5.1 (medium)')
   await ui.unmount()
+})
+
+test('keeps the band another plugin drew beneath it', async ($, on) => {
+  on('session.model', () => ({ value: 'claude-opus-5-5' }))
+  on('session.usage', () => ({ value: USAGE }))
+  on('session.measure', (_, e) => ({ changed: e.changed }))
+  on('ui.render', { component: 'AbovePrompt' }, () => ({ type: 'Text', props: {}, children: ['집중 25:00'] }))
+  await $.session.measure({ context: USAGE.context, rateLimits: [], changed: ['context'] })
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ plugin: 'status-bar', surface, component: 'AbovePrompt', props: PROPS })
+    const texts = (await ui.findAll({ type: 'Text' })).map(t => t.text)
+    expect(texts.some(t => t.startsWith('[Opus 5.5]'))).toBe(true)
+    expect(texts).toContain('집중 25:00')
+    await ui.unmount()
+  }
 })

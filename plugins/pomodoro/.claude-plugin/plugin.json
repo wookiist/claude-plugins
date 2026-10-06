@@ -1,0 +1,11 @@
+{
+  "name": "pomodoro",
+  "version": "0.1.0",
+  "description": "Pomodoro timer above the prompt: /pomodoro starts 25 minutes of focus, then a 5-minute break",
+  "author": { "name": "wookiist" },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "workMinutes": { "type": "number", "title": "Focus minutes", "description": "Length of one focus session", "default": 25 },
+    "breakMinutes": { "type": "number", "title": "Break minutes", "description": "Length of the break after a focus session", "default": 5 }
+  }
+}

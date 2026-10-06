@@ -11,6 +11,11 @@
       "name": "status-bar",
       "source": "./plugins/status-bar",
       "description": "입력창 위에 모델, effort, 컨텍스트와 사용량 한도, 턴 수, 캐시 토큰과 적중률을 색으로 보여줘요."
+    },
+    {
+      "name": "pomodoro",
+      "source": "./plugins/pomodoro",
+      "description": "입력창 위에 뽀모도로 타이머를 보여줘요. /pomodoro로 25분 집중을 시작하면 끝난 뒤 5분 휴식으로 넘어가요."
     }
   ]
 }
