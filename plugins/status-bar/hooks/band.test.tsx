@@ -1,3 +1,4 @@
+import type { RenderElement } from 'claude-code'
 import { expect, test } from 'claude-code/testing'
 
 const PROPS = {
@@ -62,7 +63,25 @@ test('redraws at once when /model or /effort changes them', async ($, on) => {
   await ui.unmount()
 })
 
-test('keeps the band another plugin drew beneath it', async ($, on) => {
+const kidsOf = (node: unknown): unknown[] =>
+  typeof node === 'object' && node !== null && 'children' in node && Array.isArray(node.children) ? node.children : []
+
+const textOf = (node: unknown): string => (typeof node === 'string' ? node : kidsOf(node).map(textOf).join(''))
+
+const textsIn = (node: unknown): string[] => [textOf(node), ...kidsOf(node).flatMap(textsIn)]
+
+const rowHolding = (el: RenderElement, a: RegExp, b: RegExp): boolean => {
+  if (el.type !== 'Box') {
+    return false
+  }
+  const kids = kidsOf(el)
+  const at = (re: RegExp) => kids.findIndex(k => textsIn(k).some(t => re.test(t)))
+  const [i, j] = [at(a), at(b)]
+  const isRow = (el.props?.flexDirection ?? 'row') === 'row'
+  return (isRow && i >= 0 && j > i) || kids.some(k => rowHolding(k as RenderElement, a, b))
+}
+
+test('puts the band another plugin drew beneath it at the right end of its row', async ($, on) => {
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: USAGE }))
   on('session.measure', (_, e) => ({ changed: e.changed }))
@@ -71,9 +90,7 @@ test('keeps the band another plugin drew beneath it', async ($, on) => {
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ plugin: 'status-bar', surface, component: 'AbovePrompt', props: PROPS })
-    const texts = (await ui.findAll({ type: 'Text' })).map(t => t.text)
-    expect(texts.some(t => t.startsWith('[Opus 5.5]'))).toBe(true)
-    expect(texts).toContain('집중 25:00')
+    expect(rowHolding(await ui.drawn(), /^\[Opus 5\.5\]/, /^집중 25:00$/)).toBe(true)
     await ui.unmount()
   }
 })

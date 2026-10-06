@@ -1,7 +1,7 @@
 {
   "name": "pomodoro",
-  "version": "0.1.0",
-  "description": "Pomodoro timer above the prompt: /pomodoro starts 25 minutes of focus, then a 5-minute break",
+  "version": "0.2.0",
+  "description": "Pomodoro timer at the right end of the band above the prompt, with start, pause, resume and stop buttons",
   "author": { "name": "wookiist" },
   "types": "./types/index.d.ts",
   "userConfig": {

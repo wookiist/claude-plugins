@@ -105,15 +105,24 @@ export const register: Register = on => {
         ))}
       </Text>
     )
-    const rest = below.type === 'engine' ? null : below
-    if (e.surface !== 'terminal' && rest === null) {
-      return status
+    const row =
+      below.type === 'engine' ? (
+        status
+      ) : (
+        <Box alignItems="flex-end" columnGap={2}>
+          <Box flexGrow={1} flexShrink={1}>
+            {status}
+          </Box>
+          <Box flexShrink={0}>{below}</Box>
+        </Box>
+      )
+    if (e.surface !== 'terminal') {
+      return row
     }
     return (
       <Box flexDirection="column">
-        {e.surface === 'terminal' && <Text dimColor>{'─'.repeat(e.props.bodyColumns)}</Text>}
-        {status}
-        {rest}
+        <Text dimColor>{'─'.repeat(e.props.bodyColumns)}</Text>
+        {row}
       </Box>
     )
   })
