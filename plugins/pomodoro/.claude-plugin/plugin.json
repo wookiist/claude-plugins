@@ -1,6 +1,6 @@
 {
   "name": "pomodoro",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Pomodoro timer above the prompt: focus and break rounds with a long break every fourth, pause, resume, skip, shared across sessions, and a tool the model can call",
   "author": { "name": "wookiist" },
   "types": "./types/index.d.ts"

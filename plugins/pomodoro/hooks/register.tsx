@@ -90,8 +90,10 @@ export const register: Register = on => {
     const line = (
       <Box columnGap={1}>
         <Text>
-          <Text color={s.kind === 'focus' ? 'error' : 'success'}>●</Text>{' '}
-          <Text bold>{LABEL[s.kind]}</Text> {s.round}회차 <Text dimColor={s.isPaused}>{clock(s.leftMs)}</Text>
+          <Text color={s.kind === 'focus' ? 'error' : 'success'} bold>
+            [{LABEL[s.kind]}]
+          </Text>{' '}
+          {s.round}회차 <Text dimColor={s.isPaused}>{clock(s.leftMs)}</Text>
           {s.isPaused ? ' 일시정지' : ''}
         </Text>
         <Button key="toggle" label={s.isPaused ? '재개' : '일시정지'} plain onPress={() => act($, { kind: s.isPaused ? 'resume' : 'pause' })} />
