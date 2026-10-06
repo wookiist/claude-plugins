@@ -76,30 +76,30 @@ test('draws nothing while stopped or while a survey holds the band', async ($, o
   await survey.unmount()
 })
 
-test('the buttons pause, resume, skip and stop on every surface, dimming a paused clock', async ($, on) => {
+test('the buttons pause, resume, skip and stop on every surface, dimming a paused clock like the status line', async ($, on) => {
   const { clock } = await boot($, on)
 
   for (const surface of ['terminal', 'desktop'] as const) {
     await run($, '')
     const ui = await $.ui.mount({ plugin: 'pomodoro', surface, component: 'AbovePrompt', props: PROPS })
-    expect((await ui.find({ type: 'Text', text: timer }))?.text).toBe('[집중] 1회차 25:00')
-    expect((await ui.find({ type: 'Text', text: timer }))?.children).toContainEqual({ type: 'Text', props: { color: 'error', bold: true }, children: ['[', '집중', ']'] })
+    expect((await ui.find({ type: 'Text', text: timer }))?.text).toBe('[집중] 1회차 / 25:00')
+    expect((await ui.find({ type: 'Text', text: timer }))?.children).toContainEqual({ type: 'Text', props: { color: 'error', bold: true }, children: ['집중'] })
     expect((await ui.findAll({ type: 'Button' })).map(b => b.text)).toEqual(['일시정지', '건너뛰기', '중지'])
 
     await clock.advance(MIN)
     await ui.press({ key: 'toggle' })
     await clock.advance(10 * MIN)
-    expect((await ui.find({ type: 'Text', text: timer }))?.text).toBe('[집중] 1회차 24:00 일시정지')
-    expect((await ui.find({ type: 'Text', text: timer }))?.children).toContainEqual({ type: 'Text', props: { dimColor: true }, children: ['24:00'] })
+    expect((await ui.find({ type: 'Text', text: timer }))?.text).toBe('[집중] 1회차 / 24:00 일시정지')
+    expect((await ui.find({ type: 'Text', text: timer }))?.children).toContainEqual({ type: 'Text', props: { color: 'subtle' }, children: ['24:00'] })
     expect((await ui.find({ key: 'toggle' }))?.text).toBe('재개')
 
     await ui.press({ key: 'toggle' })
     await clock.advance(MIN)
-    expect((await ui.find({ type: 'Text', text: timer }))?.text).toBe('[집중] 1회차 23:00')
+    expect((await ui.find({ type: 'Text', text: timer }))?.text).toBe('[집중] 1회차 / 23:00')
 
     await ui.press({ key: 'skip' })
-    expect((await ui.find({ type: 'Text', text: timer }))?.text).toBe('[휴식] 1회차 05:00')
-    expect((await ui.find({ type: 'Text', text: timer }))?.children).toContainEqual({ type: 'Text', props: { color: 'success', bold: true }, children: ['[', '휴식', ']'] })
+    expect((await ui.find({ type: 'Text', text: timer }))?.text).toBe('[휴식] 1회차 / 05:00')
+    expect((await ui.find({ type: 'Text', text: timer }))?.children).toContainEqual({ type: 'Text', props: { color: 'success', bold: true }, children: ['휴식'] })
 
     await ui.press({ key: 'stop' })
     expect(await ui.find({ type: 'Text', text: timer })).toBeUndefined()
@@ -132,15 +132,15 @@ test('picks up a plan another session wrote within a second', async ($, on) => {
 
   store.plan = { startedAt: T0 - 20 * MIN, focusMin: 25, breakMin: 5, pausedAt: null, pausedMs: 0, skippedMs: 0 }
   await clock.advance(1000)
-  expect((await ui.find({ type: 'Text', text: timer }))?.text).toBe('[집중] 1회차 04:59')
+  expect((await ui.find({ type: 'Text', text: timer }))?.text).toBe('[집중] 1회차 / 04:59')
 
   store.plan = { ...(store.plan as object), pausedAt: T0 + 1000 }
   await clock.advance(1000)
-  expect((await ui.find({ type: 'Text', text: timer }))?.text).toBe('[집중] 1회차 04:59 일시정지')
+  expect((await ui.find({ type: 'Text', text: timer }))?.text).toBe('[집중] 1회차 / 04:59 일시정지')
 
   store.plan = { ...(store.plan as object), skippedMs: 5 * MIN - 1000 }
   await clock.advance(1000)
-  expect((await ui.find({ type: 'Text', text: timer }))?.text).toBe('[휴식] 1회차 05:00 일시정지')
+  expect((await ui.find({ type: 'Text', text: timer }))?.text).toBe('[휴식] 1회차 / 05:00 일시정지')
   expect(toasts).toEqual(['집중 1회 완료. 쉬어요.'])
 
   delete store.plan
