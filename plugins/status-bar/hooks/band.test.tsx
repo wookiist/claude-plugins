@@ -27,7 +27,7 @@ test('draws the colored line, with a divider on the terminal alone', async ($, o
     const ui = await $.ui.mount({ plugin: 'status-bar', surface, component: 'AbovePrompt', props: PROPS })
     const texts = await ui.findAll({ type: 'Text' })
     const line = texts.find(t => t.text.startsWith('[Opus 5.5]'))
-    expect(line?.text).toBe('[Opus 5.5] ctx 85% / 5h - / 7d - / turn 0 / 0/0 / cache -')
+    expect(line?.text).toBe('[Opus 5.5] ctx 85% / 5h - / 7d - / turn 0 / 0/0 / cache - / cost -')
     expect(line?.children).toContainEqual(expect.objectContaining({ props: { color: 'error' }, children: ['85%'] }))
     expect(texts.some(t => t.text === '─'.repeat(40))).toBe(surface === 'terminal')
     await ui.unmount()
@@ -124,11 +124,11 @@ test('ends the line with the directory and the branch git reports, the sha once 
     await $.session.start({ cwd, surface, isInteractive: true })
     const ui = await $.ui.mount({ plugin: 'status-bar', surface, component: 'AbovePrompt', props: PROPS })
     const status = async () => (await ui.findAll({ type: 'Text' })).find(t => t.text.startsWith('[Opus 5.5]'))?.text
-    expect(await status()).toBe('[Opus 5.5] ctx 85% / 5h - / 7d - / turn 0 / 0/0 / cache - / claude-plugins (main)')
+    expect(await status()).toBe('[Opus 5.5] ctx 85% / 5h - / 7d - / turn 0 / 0/0 / cache - / cost - / claude-plugins (main)')
 
     branch = ''
     await $.tool.call({ tool: 'Bash', command: 'git switch --detach' })
-    expect(await status()).toBe('[Opus 5.5] ctx 85% / 5h - / 7d - / turn 0 / 0/0 / cache - / claude-plugins (2a265d1)')
+    expect(await status()).toBe('[Opus 5.5] ctx 85% / 5h - / 7d - / turn 0 / 0/0 / cache - / cost - / claude-plugins (2a265d1)')
     await ui.unmount()
   }
 })

@@ -11,6 +11,7 @@ const usage = {
     { kind: 'five_hour', percentUsed: 12.4 },
     { kind: 'seven_day', percentUsed: 30 },
   ],
+  cost: { usd: 3.2149 },
 }
 
 test('draws every field in order', () => {
@@ -22,12 +23,12 @@ test('draws every field in order', () => {
     cacheWrite: 40_000,
     effort: 'high',
   }, null))
-  expect(line).toBe('[Opus 5.5 (high)] ctx 42% / 5h 12% / 7d 30% / turn 7 / 1.2M/40k / cache 96%')
+  expect(line).toBe('[Opus 5.5 (high)] ctx 42% / 5h 12% / 7d 30% / turn 7 / 1.2M/40k / cache 96% / cost $3.21')
 })
 
 test('shows dashes before any reading', () => {
   const line = plain(format('claude-sonnet-5-5', { context: { window: 200_000 }, rateLimits: [] }, EMPTY, null))
-  expect(line).toBe('[Sonnet 5.5] ctx - / 5h - / 7d - / turn 0 / 0/0 / cache -')
+  expect(line).toBe('[Sonnet 5.5] ctx - / 5h - / 7d - / turn 0 / 0/0 / cache - / cost -')
 })
 
 test('spells model ids as names', () => {
@@ -59,7 +60,7 @@ test('gives turn and cache tokens their own colors', () => {
 
 test('draws labels in the plain text color, punctuation dim', () => {
   const segments = format('claude-opus-5-5', usage, EMPTY, null)
-  for (const name of ['ctx ', '5h ', '7d ', 'turn ', 'cache ']) {
+  for (const name of ['ctx ', '5h ', '7d ', 'turn ', 'cache ', 'cost ']) {
     expect(colorOf(segments, name)).toBe('text')
   }
   expect(colorOf(segments, ' / ')).toBe('subtle')
@@ -67,7 +68,7 @@ test('draws labels in the plain text color, punctuation dim', () => {
 
 test('ends with the directory and its branch, or the short sha when detached', () => {
   const line = (place: Parameters<typeof format>[3]) => plain(format('claude-opus-5-5', usage, EMPTY, place))
-  const head = '[Opus 5.5] ctx 42% / 5h 12% / 7d 30% / turn 0 / 0/0 / cache -'
+  const head = '[Opus 5.5] ctx 42% / 5h 12% / 7d 30% / turn 0 / 0/0 / cache - / cost $3.21'
   expect(line({ dir: 'claude-plugins', head: 'main' })).toBe(`${head} / claude-plugins (main)`)
   expect(line({ dir: 'claude-plugins', head: '2a265d1' })).toBe(`${head} / claude-plugins (2a265d1)`)
   expect(line({ dir: 'scratchpad', head: null })).toBe(`${head} / scratchpad`)
@@ -79,4 +80,13 @@ test('colors the branch apart from the directory', () => {
   expect(colorOf(segments, 'claude-plugins')).toBe('text')
   expect(colorOf(segments, 'main')).toBe('success')
   expect(colorOf(segments, ' (')).toBe('subtle')
+})
+
+test('shows the session cost in dollars, or a dash where the host keeps none', () => {
+  expect(colorOf(format('claude-opus-5-5', usage, EMPTY, null), '$3.21')).toBe('warning')
+  expect(plain(format('claude-opus-5-5', { ...usage, cost: { usd: 0.004 } }, EMPTY, null))).toContain('/ cost $0.00')
+  expect(plain(format('claude-opus-5-5', { ...usage, cost: { usd: 125.5 } }, EMPTY, null))).toContain('/ cost $125.50')
+  const { cost: _, ...noLedger } = usage
+  expect(colorOf(format('claude-opus-5-5', noLedger, EMPTY, null), '-')).toBe('subtle')
+  expect(plain(format('claude-opus-5-5', noLedger, EMPTY, null))).toMatch(/\/ cost -$/)
 })

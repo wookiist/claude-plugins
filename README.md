@@ -9,7 +9,7 @@ wookiist가 만든 Claude Code 플러그인을 모아 둔 마켓플레이스예�
 입력창 위에 상태 줄을 한 줄 보여줘요. CLI에서는 상태 줄 위에 구분선도 그려요.
 
 ```
-[Opus 5.5 (high)] ctx 42% / 5h 12% / 7d 30% / turn 7 / 1.2M/40k / cache 96% / claude-plugins (main)
+[Opus 5.5 (high)] ctx 42% / 5h 12% / 7d 30% / turn 7 / 1.2M/40k / cache 96% / cost $3.21 / claude-plugins (main)
 ```
 
 | 항목 | 내용 |
@@ -20,6 +20,7 @@ wookiist가 만든 Claude Code 플러그인을 모아 둔 마켓플레이스예�
 | `turn` | 이 세션에서 끝난 턴 수예요. 서브에이전트 턴은 세지 않아요. |
 | `1.2M/40k` | 캐시 읽기 토큰과 캐시 쓰기 토큰의 누적값이에요. |
 | `cache` | 입력 토큰 가운데 캐시에서 읽은 비율이에요. |
+| `cost` | 이 세션에서 쓴 비용이에요. `/cost`와 같은 값을 달러로 보여줘요. |
 | `claude-plugins (main)` | 현재 디렉터리 이름과 git 브랜치예요. HEAD가 분리돼 있으면 짧은 커밋 해시를, git 저장소 밖이면 디렉터리 이름만 보여줘요. 세션 시작, 턴 종료, Bash 실행 뒤에 다시 읽어요. |
 
 사용률은 50% 미만이면 초록, 80% 미만이면 노랑, 80% 이상이면 빨강으로 표시해요. 캐시 적중률은 반대로 높을수록 초록이에요.
@@ -29,7 +30,7 @@ wookiist가 만든 Claude Code 플러그인을 모아 둔 마켓플레이스예�
 입력창 위에 뽀모도로 타이머를 한 줄 보여줘요. status-bar와 함께 쓰면 상태 줄 바로 아래에 붙어요. 소리는 내지 않아요.
 
 ```
-[Opus 5.5 (high)] ctx 42% / ... / cache 96% / claude-plugins (main)
+[Opus 5.5 (high)] ctx 42% / ... / cache 96% / cost $3.21 / claude-plugins (main)
 [집중] 1회차 / 24:13 / 일시정지 · 건너뛰기 · 중지
 ```
 

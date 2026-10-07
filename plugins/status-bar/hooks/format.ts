@@ -35,7 +35,7 @@ const SEP = punct(' / ')
 
 export const format = (
   model: string,
-  usage: Pick<SessionUsage, 'context' | 'rateLimits'>,
+  usage: Pick<SessionUsage, 'context' | 'rateLimits' | 'cost'>,
   t: Tally,
   place: Place | null,
 ): Segment[] => {
@@ -65,6 +65,9 @@ export const format = (
     SEP,
     label('cache '),
     hit(read === 0 ? undefined : (t.cacheRead / read) * 100),
+    SEP,
+    label('cost '),
+    usage.cost === undefined ? { text: '-', color: 'subtle' } : { text: `$${usage.cost.usd.toFixed(2)}`, color: 'warning' },
     ...(place ? [SEP, label(place.dir)] : []),
     ...(place?.head ? [punct(' ('), { text: place.head, color: 'success' } as const, punct(')')] : []),
   ]
