@@ -87,28 +87,46 @@ export const register: Register = on => {
       return below
     }
     const { Box, Button, Text } = $.ui.resolve(e)
-    const line = (
-      <Box>
-        <Text>
-          <Text color="subtle">[</Text>
-          <Text color={s.kind === 'focus' ? 'error' : 'success'} bold>
-            {LABEL[s.kind]}
-          </Text>
-          <Text color="subtle">] </Text>
-          <Text color="ide">{s.round}</Text>
-          <Text color="text">회차</Text>
-          <Text color="subtle"> / </Text>
-          <Text color={s.isPaused ? 'subtle' : 'suggestion'}>{clock(s.leftMs)}</Text>
-          {s.isPaused ? <Text color="warning"> 일시정지</Text> : ''}
+    const summary = (
+      <Text>
+        <Text color="subtle">[</Text>
+        <Text color={s.kind === 'focus' ? 'error' : 'success'} bold>
+          {LABEL[s.kind]}
         </Text>
+        <Text color="subtle">] </Text>
+        <Text color="ide">{s.round}</Text>
+        <Text color="text">회차</Text>
         <Text color="subtle"> / </Text>
-        <Button key="toggle" label={s.isPaused ? '재개' : '일시정지'} plain dimColor onPress={() => act($, { kind: s.isPaused ? 'resume' : 'pause' })} />
-        <Text color="subtle"> · </Text>
-        <Button key="skip" label="건너뛰기" plain dimColor onPress={() => act($, { kind: 'skip' })} />
-        <Text color="subtle"> · </Text>
-        <Button key="stop" label="중지" plain dimColor onPress={() => act($, { kind: 'stop' })} />
-      </Box>
+        <Text color={s.isPaused ? 'subtle' : 'suggestion'}>{clock(s.leftMs)}</Text>
+        {s.isPaused ? <Text color="warning"> 일시정지</Text> : ''}
+      </Text>
     )
+    const toggle = (
+      <Button key="toggle" label={s.isPaused ? '재개' : '일시정지'} plain dimColor onPress={() => act($, { kind: s.isPaused ? 'resume' : 'pause' })} />
+    )
+    const skip = <Button key="skip" label="건너뛰기" plain dimColor onPress={() => act($, { kind: 'skip' })} />
+    const stop = <Button key="stop" label="중지" plain dimColor onPress={() => act($, { kind: 'stop' })} />
+    const line =
+      e.surface === 'terminal' ? (
+        <Box>
+          {summary}
+          <Text color="subtle"> / </Text>
+          {toggle}
+          <Text color="subtle"> · </Text>
+          {skip}
+          <Text color="subtle"> · </Text>
+          {stop}
+        </Box>
+      ) : (
+        <Box justifyContent="space-between" alignItems="center">
+          {summary}
+          <Box columnGap={2}>
+            {toggle}
+            {skip}
+            {stop}
+          </Box>
+        </Box>
+      )
     if (below.type !== 'engine') {
       return (
         <Box flexDirection="column">

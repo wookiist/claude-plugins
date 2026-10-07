@@ -185,3 +185,18 @@ test('the model tool starts, pauses, resumes and stops, ending with the current 
   expect(await call({ action: 'pause' })).toBe('진행 중인 타이머가 없어요. 현재 타이머 꺼짐')
   expect(await call({ action: 'jump' })).toBe('action은 start, stop, pause, resume 중 하나여야 해요. 현재 타이머 꺼짐')
 })
+
+test('keeps text separators on the terminal and pushes plain buttons to the right edge on the desktop', async ($, on) => {
+  await boot($, on)
+  await run($, '')
+  const term = await $.ui.mount({ plugin: 'pomodoro', surface: 'terminal', component: 'AbovePrompt', props: PROPS })
+  expect((await term.findAll({ type: 'Text' })).filter(t => t.text === ' · ')).toHaveLength(2)
+  await term.unmount()
+
+  const desk = await $.ui.mount({ plugin: 'pomodoro', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
+  expect((await desk.findAll({ type: 'Text' })).filter(t => t.text === ' · ')).toHaveLength(0)
+  expect((await desk.find({ type: 'Text', text: timer }))?.text).toBe('[집중] 1회차 / 25:00')
+  expect(await desk.drawn()).toMatchObject({ type: 'Box', props: { justifyContent: 'space-between' } })
+  expect((await desk.findAll({ type: 'Button' })).map(b => b.text)).toEqual(['일시정지', '건너뛰기', '중지'])
+  await desk.unmount()
+})
