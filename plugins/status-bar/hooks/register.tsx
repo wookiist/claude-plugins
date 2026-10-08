@@ -3,19 +3,23 @@ import type { EngineInterface, Register, RenderElement, SessionRateLimit } from 
 
 import type { Place } from '../types'
 import { EMPTY, format } from './format'
-import { current, mergeLimits, parseLimits } from './limits'
+import { current, parseLimits, publish, unpublished } from './limits'
 
 const tally = atom({ plugin: 'status-bar', key: 'tally' } as const, EMPTY)
 const line = atom({ plugin: 'status-bar', key: 'line' } as const, null)
 const place = atom({ plugin: 'status-bar', key: 'place' } as const, null)
+const published = atom({ plugin: 'status-bar', key: 'published' } as const, [])
 
-const shareLimits = async ($: EngineInterface, local: readonly SessionRateLimit[]) => {
+const shareLimits = async ($: EngineInterface, local: readonly SessionRateLimit[], now: number) => {
   const shared = parseLimits(await $.store.get('limits'))
-  const merged = mergeLimits(shared, local)
-  if (JSON.stringify(merged) !== JSON.stringify(shared)) {
-    await $.store.set('limits', merged)
+  const fresh = unpublished(local, await read($, published))
+  if (fresh.length === 0) {
+    return shared
   }
-  return merged
+  const next = publish(shared, fresh, now)
+  await $.store.set('limits', next)
+  await update($, published, prev => [...prev.filter(p => !fresh.some(r => r.kind === p.kind)), ...fresh])
+  return next
 }
 
 const refresh = async ($: EngineInterface) => {
@@ -26,7 +30,7 @@ const refresh = async ($: EngineInterface) => {
     read($, place),
     $.clock.now(),
   ])
-  const rateLimits = current(await shareLimits($, usage.rateLimits), now)
+  const rateLimits = current(await shareLimits($, usage.rateLimits, now), now)
   const next = format(model, { ...usage, rateLimits }, t, p)
   await update($, line, prev => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next))
 }

@@ -13,8 +13,10 @@ export type Segment = { text: string; color: SegmentColor; bold?: boolean }
 
 export type Place = { dir: string; head: string | null }
 
+export type Reading = { kind: string; percentUsed: number; resetsAt?: string }
+
 declare module 'claude-code' {
   interface PluginState {
-    'status-bar': { tally: Tally; line: Segment[] | null; place: Place | null }
+    'status-bar': { tally: Tally; line: Segment[] | null; place: Place | null; published: Reading[] }
   }
 }

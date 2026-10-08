@@ -1,6 +1,6 @@
 {
   "name": "status-bar",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Status line above the prompt: [model (effort)] ctx % / 5h % / 7d % / turn / cache read/write / cache hit / dir (git branch)",
   "author": { "name": "wookiist" },
   "types": "./types/index.d.ts"
