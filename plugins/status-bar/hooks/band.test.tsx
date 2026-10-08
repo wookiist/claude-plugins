@@ -1,5 +1,6 @@
-import type { RenderElement } from 'claude-code'
+import type { RenderElement, SessionRateLimit } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
+import type { TestBody } from 'claude-code/testing'
 
 const PROPS = {
   hasSurvey: false,
@@ -158,8 +159,7 @@ test('drops the divider a band beneath it drew, keeping its own', async ($, on) 
 })
 
 test('shows the freshest 5h and 7d any session saw, and shares its own', async ($, on) => {
-  const now = Date.parse('2026-10-07T01:00:00.000Z')
-  const clock = mock.clock(on, { now })
+  const clock = mock.clock(on, { now: Date.parse('2026-10-07T04:59:00.000Z') })
   const store: Record<string, unknown> = {}
   on('store.get', (_, e) => ({ value: store[e.key] }))
   on('store.set', (_, e) => {
@@ -184,7 +184,7 @@ test('shows the freshest 5h and 7d any session saw, and shares its own', async (
   const ui = await $.ui.mount({ plugin: 'status-bar', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
   const limits = async () => (await ui.find({ type: 'Text', text: /^\[Opus/ }))?.text.match(/5h \S+ \/ 7d \S+/)?.[0]
   expect(await limits()).toBe('5h 12% / 7d 30%')
-  expect(store.limits).toEqual(local)
+  expect(store.limits).toEqual(local.map(r => expect.objectContaining(r)))
 
   store.limits = [
     { kind: 'five_hour', percentUsed: 47, resetsAt: H },
@@ -199,5 +199,54 @@ test('shows the freshest 5h and 7d any session saw, and shares its own', async (
 
   await clock.set(Date.parse(H))
   expect(await limits()).toBe('5h 0% / 7d 33%')
+  await ui.unmount()
+})
+
+const startWithStore = async ([$, on]: Parameters<TestBody>, store: Record<string, unknown>, usage: () => SessionRateLimit[]) => {
+  const clock = mock.clock(on, { now: Date.parse('2026-10-07T01:00:00.000Z') })
+  on('store.get', (_, e) => ({ value: store[e.key] }))
+  on('store.set', (_, e) => {
+    store[e.key] = e.value
+    return { value: undefined }
+  })
+  on('session.model', () => ({ value: 'claude-opus-5-5' }))
+  on('session.usage', () => ({ value: { ...USAGE, rateLimits: usage() } }))
+  on('session.measure', (_, e) => ({ changed: e.changed }))
+  on('session.start', (_, e) => e)
+  on('session.cwd', () => ({ value: '/' }))
+  on('process.run', () => ({ value: { exitCode: 128, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
+  on('ui.render', { component: 'AbovePrompt' }, ENGINE)
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const ui = await $.ui.mount({ plugin: 'status-bar', surface: 'desktop', component: 'AbovePrompt', props: PROPS })
+  const limits = async () => (await ui.find({ type: 'Text', text: /^\[Opus/ }))?.text.match(/5h \S+ \/ 7d \S+/)?.[0]
+  return { clock, ui, limits }
+}
+
+test('a lower reading of the same window replaces a stale higher one in the store', async ($, on) => {
+  const R = '2026-10-11T06:00:00.000Z'
+  const store: Record<string, unknown> = { limits: [{ kind: 'seven_day', percentUsed: 61, resetsAt: R }] }
+  const local = [{ kind: 'seven_day', percentUsed: 5, resetsAt: R }]
+  const { ui, limits } = await startWithStore([$, on], store, () => local)
+  expect(await limits()).toBe('5h - / 7d 5%')
+  await ui.unmount()
+})
+
+test('an idle session never overwrites a newer reading another session shared', async ($, on) => {
+  const H = '2026-10-07T05:00:00.000Z'
+  const store: Record<string, unknown> = {}
+  let local = [{ kind: 'five_hour', percentUsed: 12, resetsAt: H }]
+  const { clock, ui, limits } = await startWithStore([$, on], store, () => local)
+  expect(await limits()).toBe('5h 12% / 7d -')
+
+  await clock.advance(5000)
+  store.limits = [{ kind: 'five_hour', percentUsed: 8, resetsAt: H, seenAt: Date.parse('2026-10-07T01:00:05.000Z') }]
+  await clock.advance(5000)
+  expect(await limits()).toBe('5h 8% / 7d -')
+  await clock.advance(5000)
+  expect(await limits()).toBe('5h 8% / 7d -')
+
+  local = [{ kind: 'five_hour', percentUsed: 9, resetsAt: H }]
+  await clock.advance(5000)
+  expect(await limits()).toBe('5h 9% / 7d -')
   await ui.unmount()
 })
